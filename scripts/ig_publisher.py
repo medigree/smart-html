@@ -195,23 +195,84 @@ class ReleasePublisher:
         msg = "\n".join(lines)
         self.log_progress(msg)
 
+    def _resolve_release_tag(self, pubreq_version):
+        """Return the tag (e.g. 'v0.1.0') to use in the release download URL.
+
+        Prefers GITHUB_REF_NAME when triggered by a tag push — that is the tag
+        that actually triggered the release workflow. Falls back to the
+        --pubreq-version override, then the 'version' field already in
+        publication-request.json. Adds a 'v' prefix if the source is bare.
+        """
+        if os.environ.get("GITHUB_REF_TYPE") == "tag":
+            ref = os.environ.get("GITHUB_REF_NAME")
+            if ref:
+                return ref
+        version = self.pubreq_overrides.get("version") or pubreq_version
+        if not version:
+            return None
+        version = str(version)
+        return version if version.startswith("v") else f"v{version}"
+
+    @staticmethod
+    def _github_repo_slug(repo_url):
+        """Extract 'owner/repo' from a GitHub URL (HTTPS or SSH)."""
+        if not repo_url:
+            return None
+        url = repo_url.strip()
+        if url.startswith("git@") and ":" in url:
+            path = url.split(":", 1)[1]
+        else:
+            path = urlparse(url).path.lstrip("/")
+        path = path.rstrip("/")
+        if path.endswith(".git"):
+            path = path[:-4]
+        parts = path.split("/")
+        if len(parts) >= 2 and parts[0] and parts[1]:
+            return f"{parts[0]}/{parts[1]}"
+        return None
+
     def _maybe_write_pubreq(self):
         target = os.path.join(self.source_dir, 'publication-request.json')
-        if os.path.exists(target):
-            return
-        d = {
-            "path": self.pubreq_overrides.get("path"),
-            "canonical": self.pubreq_overrides.get("canonical"),
-            "package-id": self.pubreq_overrides.get("package_id"),
-            "version": self.pubreq_overrides.get("version"),
-        }
-        # keep only provided fields
-        d = {k: v for k, v in d.items() if v}
+        existed = os.path.exists(target)
+        if existed:
+            with open(target, encoding='utf-8') as f:
+                d = json.load(f)
+            original = deepcopy(d)
+        else:
+            d = {
+                "path": self.pubreq_overrides.get("path"),
+                "canonical": self.pubreq_overrides.get("canonical"),
+                "package-id": self.pubreq_overrides.get("package_id"),
+                "version": self.pubreq_overrides.get("version"),
+            }
+            # keep only provided fields
+            d = {k: v for k, v in d.items() if v}
+            original = None
+
+        # Inject additional-version-properties with GitHub release URL for full-ig.zip.
+        # Release tag resolution, in priority order:
+        #   1. GITHUB_REF_NAME when GITHUB_REF_TYPE=tag (the tag that triggered the workflow)
+        #   2. --pubreq-version / PUBREQ_VERSION (explicit override), 'v' prepended if missing
+        #   3. existing "version" field in publication-request.json, 'v' prepended if missing
+        repo_slug = self._github_repo_slug(self.source_repo)
+        tag = self._resolve_release_tag(d.get("version"))
+        if repo_slug and tag:
+            url = f"https://github.com/{repo_slug}/releases/download/{tag}/"
+            avp = d.get("additional-version-properties")
+            if not isinstance(avp, dict):
+                avp = {}
+            avp["full-ig.zip"] = url
+            d["additional-version-properties"] = avp
+
         if not d:
             return
+        if existed and d == original:
+            return
+
         with open(target, 'w', encoding='utf-8') as f:
             json.dump(d, f, indent=2)
-        self.log_progress(f"Wrote minimal publication-request.json to {target}")
+        action = "Updated" if existed else "Wrote minimal"
+        self.log_progress(f"{action} publication-request.json at {target}")
 
 
     def get_github_token(self):
