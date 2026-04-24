@@ -266,6 +266,16 @@ class ReleasePublisher:
                 avp = {}
             avp["full-ig.zip"] = url
             d["additional-version-properties"] = avp
+            self.log_progress(
+                f"📎 additional-version-properties.full-ig.zip = {url} "
+                f"(repo={repo_slug}, tag={tag}, "
+                f"source=GITHUB_REF_NAME/{os.environ.get('GITHUB_REF_TYPE','?')})"
+            )
+        else:
+            self.log_progress(
+                f"⚠️ Skipped additional-version-properties injection "
+                f"(repo_slug={repo_slug!r}, tag={tag!r})"
+            )
 
         if not d:
             return
