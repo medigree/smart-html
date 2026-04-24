@@ -250,11 +250,14 @@ class ReleasePublisher:
             original = None
 
         # Inject additional-version-properties with GitHub release URL for full-ig.zip.
+        # Repo resolution:
+        #   1. --source-repo if provided
+        #   2. GITHUB_REPOSITORY (set by Actions to the caller's 'owner/repo')
         # Release tag resolution, in priority order:
         #   1. GITHUB_REF_NAME when GITHUB_REF_TYPE=tag (the tag that triggered the workflow)
         #   2. --pubreq-version / PUBREQ_VERSION (explicit override), 'v' prepended if missing
         #   3. existing "version" field in publication-request.json, 'v' prepended if missing
-        repo_slug = self._github_repo_slug(self.source_repo)
+        repo_slug = self._github_repo_slug(self.source_repo) or os.environ.get("GITHUB_REPOSITORY")
         tag = self._resolve_release_tag(d.get("version"))
         if repo_slug and tag:
             url = f"https://github.com/{repo_slug}/releases/download/{tag}/"
