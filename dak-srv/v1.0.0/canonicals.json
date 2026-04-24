@@ -1,0 +1,7 @@
+[{
+  "id" : "smart.who.int.dak-srv",
+  "type" : "ImplementationGuide",
+  "url" : "http://smart.who.int/dak-srv/ImplementationGuide/smart.who.int.dak-srv",
+  "version" : "1.0.0",
+  "name" : "DAKSRV"
+}]
